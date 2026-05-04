@@ -1,0 +1,3 @@
+# Future HW3+: image processors live here.
+# Each processor exposes `apply(image: np.ndarray, **params) -> np.ndarray`.
+# Examples to add later: SplitRGB, Grayscale, Rotate, Crop, Histogram, Filter, ...
