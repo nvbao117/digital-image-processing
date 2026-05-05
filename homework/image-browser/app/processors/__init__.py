@@ -1,3 +1,3 @@
-# Future HW3+: image processors live here.
-# Each processor exposes `apply(image: np.ndarray, **params) -> np.ndarray`.
-# Examples to add later: SplitRGB, Grayscale, Rotate, Crop, Histogram, Filter, ...
+# processors/__init__.py
+# Import builtin processors so they self-register when this package is imported.
+from . import builtin   # noqa: F401 — side-effect import triggers @register_processor

@@ -1,5 +1,14 @@
+"""
+folder_tree.py — Themed folder tree with amber accent selection.
+"""
+
 from PyQt5.QtCore import QDir, pyqtSignal
 from PyQt5.QtWidgets import QFileSystemModel, QSizePolicy, QTreeView
+
+from ..theme import (
+    C_ACCENT, C_BG_BASE, C_BG_ACTIVE, C_BG_HOVER,
+    C_BORDER, C_TEXT_MID, C_TEXT_HI, FONT_MONO,
+)
 
 
 class FolderTree(QTreeView):
@@ -20,6 +29,9 @@ class FolderTree(QTreeView):
         self.setIndentation(16)
         self.setUniformRowHeights(True)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        # Ensure our QSS item styles apply (not system palette)
+        self.setStyle(self.style())
 
         self.clicked.connect(self._emit_folder)
 
