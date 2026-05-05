@@ -67,6 +67,7 @@ class CollapsibleSection(QWidget):
         super().__init__(parent)
         self._expanded = start_expanded
         self._widgets: list[QWidget] = []
+        self._buttons: list[QPushButton] = []
         self._icon_func = icon_func
 
         outer = QVBoxLayout(self)
@@ -122,13 +123,14 @@ class CollapsibleSection(QWidget):
         arrow = "▼" if self._expanded else "▶"
         self._header.setText(f"{arrow}  {title}")
 
-    def add_widget(self, w: QWidget):
+    def add_widget(self, w: QWidget, btns: list[QPushButton]):
         self._cl.addWidget(w)
         self._widgets.append(w)
+        self._buttons.extend(btns)
 
     def set_buttons_enabled(self, enabled: bool):
-        for w in self._widgets:
-            w.setEnabled(enabled)
+        for btn in self._buttons:
+            btn.setEnabled(enabled)
 
     def _toggle(self):
         self._expanded = not self._expanded
@@ -434,7 +436,7 @@ class ProcessingSidebar(QWidget):
 
                 w_layout.addWidget(btn, stretch=1)
                 w_layout.addWidget(info_btn)
-                section.add_widget(w_container)
+                section.add_widget(w_container, [btn, info_btn])
 
             self._sections.append(section)
             self._cl.addWidget(section)
