@@ -20,6 +20,8 @@ from PyQt5.QtCore import QPropertyAnimation, QEasingCurve, Qt
 from PyQt5.QtGui import QColor, QFont, QKeySequence, QPainter
 from PyQt5.QtWidgets import (
     QFileDialog,
+    QDialog,
+    QTextEdit,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -356,6 +358,7 @@ class MainWindow(QMainWindow):
         self.sidebar.saveRequested.connect(self._on_save)
         self.sidebar.processRequested.connect(self._on_process)
         self.sidebar.animateRequested.connect(self._on_animate)
+        self.sidebar.infoRequested.connect(self._on_info)
         
         QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(self._on_save)
 
@@ -428,3 +431,79 @@ class MainWindow(QMainWindow):
         import cv2
         cv2.imwrite(path, img)
         self.statusBar().showMessage(f"✓  Saved: {os.path.basename(path)}")
+
+    def _on_info(self, label: str):
+        from .processors.base import get_processor
+        import inspect
+        
+        proc = get_processor(label)
+        if not proc:
+            return
+            
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Info: {proc.label}")
+        dialog.resize(600, 450)
+        dialog.setStyleSheet(f"background: {C_BG_DEEP}; color: {C_TEXT_HI};")
+        
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(16, 16, 16, 16)
+        
+        title = QLabel(f"{proc.label} ({proc.category})")
+        title.setFont(QFont(FONT_UI, 14, QFont.Bold))
+        title.setStyleSheet(f"color: {C_ACCENT};")
+        layout.addWidget(title)
+        
+        desc = QLabel(proc.tooltip or "No description available.")
+        desc.setFont(QFont(FONT_UI, 11))
+        desc.setWordWrap(True)
+        desc.setStyleSheet(f"color: {C_TEXT_MID};")
+        layout.addWidget(desc)
+        
+        layout.addSpacing(10)
+        code_lbl = QLabel("Source Code:")
+        code_lbl.setFont(QFont(FONT_UI, 10, QFont.Bold))
+        layout.addWidget(code_lbl)
+        
+        try:
+            source = inspect.getsource(proc.__class__)
+        except Exception as e:
+            source = f"# Could not load source code:\n{e}"
+            
+        code_view = QTextEdit()
+        code_view.setReadOnly(True)
+        code_view.setFont(QFont(FONT_MONO, 10))
+        code_view.setStyleSheet(f"""
+            QTextEdit {{
+                background: {C_BG_BASE}; 
+                color: {C_TEXT_MID}; 
+                border: 1px solid {C_BORDER};
+                padding: 8px;
+                border-radius: 4px;
+            }}
+        """)
+        code_view.setPlainText(source)
+        layout.addWidget(code_view, stretch=1)
+        
+        layout.addSpacing(10)
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dialog.accept)
+        close_btn.setFixedWidth(100)
+        close_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {C_BG_SURFACE}; 
+                color: {C_TEXT_HI}; 
+                padding: 6px; 
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+            }}
+            QPushButton:hover {{
+                background: {C_BG_HOVER};
+            }}
+        """)
+        
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        btn_layout.addWidget(close_btn)
+        layout.addLayout(btn_layout)
+        
+        dialog.exec_()

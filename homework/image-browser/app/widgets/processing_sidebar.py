@@ -66,7 +66,7 @@ class CollapsibleSection(QWidget):
                  icon_func=None, parent=None):
         super().__init__(parent)
         self._expanded = start_expanded
-        self._buttons: list[QPushButton] = []
+        self._widgets: list[QWidget] = []
         self._icon_func = icon_func
 
         outer = QVBoxLayout(self)
@@ -122,13 +122,13 @@ class CollapsibleSection(QWidget):
         arrow = "▼" if self._expanded else "▶"
         self._header.setText(f"{arrow}  {title}")
 
-    def add_button(self, btn: QPushButton):
-        self._cl.addWidget(btn)
-        self._buttons.append(btn)
+    def add_widget(self, w: QWidget):
+        self._cl.addWidget(w)
+        self._widgets.append(w)
 
     def set_buttons_enabled(self, enabled: bool):
-        for btn in self._buttons:
-            btn.setEnabled(enabled)
+        for w in self._widgets:
+            w.setEnabled(enabled)
 
     def _toggle(self):
         self._expanded = not self._expanded
@@ -282,6 +282,7 @@ class ProcessingSidebar(QWidget):
     saveRequested    = pyqtSignal()
     processRequested = pyqtSignal(str)
     animateRequested = pyqtSignal(str)
+    infoRequested    = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -398,6 +399,11 @@ class ProcessingSidebar(QWidget):
             )
 
             for proc in procs:
+                w_container = QWidget()
+                w_layout = QHBoxLayout(w_container)
+                w_layout.setContentsMargins(0, 0, 0, 0)
+                w_layout.setSpacing(2)
+
                 btn = _proc_btn(proc.label, proc.tooltip)
                 # Add icon if we have one for this processor
                 if proc.label in PROC_ICONS:
@@ -407,7 +413,28 @@ class ProcessingSidebar(QWidget):
                     btn.clicked.connect(self._make_animate_handler(proc.label))
                 else:
                     btn.clicked.connect(self._make_process_handler(proc.label))
-                section.add_button(btn)
+                
+                info_btn = QPushButton()
+                info_btn.setIcon(IC.info())
+                info_btn.setFixedSize(24, 32)
+                info_btn.setToolTip(f"View details & code for {proc.label}")
+                info_btn.setStyleSheet(f"""
+                    QPushButton {{
+                        background: transparent;
+                        border: none;
+                        border-bottom: 1px solid {C_BORDER};
+                        border-radius: 0;
+                    }}
+                    QPushButton:hover {{
+                        background: {C_BG_HOVER};
+                        border-bottom: 1px solid {C_ACCENT};
+                    }}
+                """)
+                info_btn.clicked.connect(self._make_info_handler(proc.label))
+
+                w_layout.addWidget(btn, stretch=1)
+                w_layout.addWidget(info_btn)
+                section.add_widget(w_container)
 
             self._sections.append(section)
             self._cl.addWidget(section)
@@ -419,6 +446,10 @@ class ProcessingSidebar(QWidget):
 
     def _make_animate_handler(self, label: str):
         def h(): self.animateRequested.emit(label)
+        return h
+        
+    def _make_info_handler(self, label: str):
+        def h(): self.infoRequested.emit(label)
         return h
 
     # ──────────────────────────────────────────
