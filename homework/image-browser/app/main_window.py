@@ -54,7 +54,7 @@ from .widgets.processing_sidebar import ProcessingSidebar
 from .icons import IC, ICON_SIZE_SM, ICON_SIZE_MD, ICON_SIZE_LG
 
 # 4-column ratio: Explorer : Collection : Preview : Process
-SPLITTER_RATIO = (1, 2, 2, 1)
+SPLITTER_RATIO = (2, 3, 5, 3)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -354,9 +354,13 @@ class MainWindow(QMainWindow):
         grid.folderLoaded.connect(self.grid_panel.update_count)
         grid.folderLoaded.connect(self._on_folder_loaded)
 
-        self.sidebar.resetRequested.connect(self.preview.reset_to_original)
+        self.preview.image_canvas.roiChanged.connect(self._on_roi_changed)
+
+        self.sidebar.resetRequested.connect(self._on_reset)
+        self.sidebar.applyRequested.connect(self._on_apply)
         self.sidebar.saveRequested.connect(self._on_save)
         self.sidebar.processRequested.connect(self._on_process)
+        self.sidebar.processWithParamsRequested.connect(self._on_process_with_params)
         self.sidebar.animateRequested.connect(self._on_animate)
         self.sidebar.infoRequested.connect(self._on_info)
         
@@ -386,6 +390,9 @@ class MainWindow(QMainWindow):
         self._on_folder_changed(folder)
 
     def _on_image_selected(self, path: str):
+        self._current_proc_label = None
+        self._current_proc_params = None
+        self._last_processed_cv = None
         self.preview.show_image(path)
         self.sidebar.set_enabled(True)
 
@@ -399,6 +406,47 @@ class MainWindow(QMainWindow):
         noun = "frame" if count == 1 else "frames"
         self.statusBar().showMessage(f"→  {name}   ·   {count} {noun}")
 
+    def _on_reset(self):
+        self._current_proc_label = None
+        self._current_proc_params = None
+        self._last_processed_cv = None
+        self.preview.reset_to_original()
+
+    def _on_apply(self):
+        if hasattr(self, '_last_processed_cv') and self._last_processed_cv is not None:
+            self.preview.commit_processed_image(self._last_processed_cv)
+            self._current_proc_label = None
+            self._current_proc_params = None
+            self._last_processed_cv = None
+
+    def _on_roi_changed(self):
+        if not hasattr(self, '_current_proc_label') or not self._current_proc_label:
+            return
+        if hasattr(self, '_current_proc_params') and self._current_proc_params is not None:
+            self._on_process_with_params(self._current_proc_label, self._current_proc_params)
+        else:
+            self._on_process(self._current_proc_label)
+
+    def _blend_with_roi(self, original, processed):
+        import numpy as np
+        import cv2
+        mask = self.preview.image_canvas.get_image_mask()
+        if mask is None:
+            return processed
+            
+        if original.ndim == 3 and mask.ndim == 2:
+            mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+            
+        mask_f = mask.astype(np.float32) / 255.0
+        
+        if original.ndim == 3 and processed.ndim == 2:
+            processed = cv2.cvtColor(processed, cv2.COLOR_GRAY2BGR)
+        elif original.ndim == 2 and processed.ndim == 3:
+            processed = cv2.cvtColor(processed, cv2.COLOR_BGR2GRAY)
+            
+        blended = (processed.astype(np.float32) * mask_f + original.astype(np.float32) * (1.0 - mask_f))
+        return np.clip(blended, 0, 255).astype(np.uint8)
+
     def _on_process(self, label: str):
         img = self.preview.cv_image
         if img is None:
@@ -406,7 +454,24 @@ class MainWindow(QMainWindow):
         from .processors.base import get_processor
         proc = get_processor(label)
         if proc:
-            self.preview.display_cv(proc.apply(img))
+            self._current_proc_label = label
+            self._current_proc_params = None
+            res = proc.apply(img)
+            self._last_processed_cv = self._blend_with_roi(img, res)
+            self.preview.display_cv(self._last_processed_cv)
+
+    def _on_process_with_params(self, label: str, params: dict):
+        img = self.preview.cv_image
+        if img is None:
+            return
+        from .processors.base import get_processor
+        proc = get_processor(label)
+        if proc:
+            self._current_proc_label = label
+            self._current_proc_params = params
+            res = proc.apply(img, **params)
+            self._last_processed_cv = self._blend_with_roi(img, res)
+            self.preview.display_cv(self._last_processed_cv)
 
     def _on_animate(self, label: str):
         self.preview.start_rotate()

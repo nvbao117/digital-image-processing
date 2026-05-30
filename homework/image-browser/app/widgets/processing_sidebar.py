@@ -25,12 +25,15 @@ from PyQt5.QtCore import (
 )
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (
+    QComboBox,
     QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
     QScrollArea,
+    QSlider,
     QSizePolicy,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -266,6 +269,229 @@ def _save_btn() -> QPushButton:
     """)
     return btn
 
+
+# ─────────────────────────────────────────────
+# Parameter Control Panel (Slider + ComboBox)
+# ─────────────────────────────────────────────
+class ParamControlPanel(QWidget):
+    valueChanged = pyqtSignal(dict)
+
+    def __init__(self, params: dict, parent=None):
+        super().__init__(parent)
+        self.params = params
+        self.sliders  = {}  # p_name -> (slider, val_lbl, factor)
+        self.combos   = {}  # p_name -> QComboBox
+
+        from PyQt5.QtCore import QTimer
+        self._timer = QTimer(self)
+        self._timer.setSingleShot(True)
+        self._timer.setInterval(250)  # 250ms debounce
+        self._timer.timeout.connect(self._emit_value_changed)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 2, 8, 8)
+        layout.setSpacing(4)
+
+        for p_name, p_info in params.items():
+            param_type = p_info.get("type", "slider")
+
+            lbl = QLabel(f"{p_info['label']}:")
+            lbl.setFont(QFont(FONT_MONO, 9))
+            lbl.setStyleSheet(f"color: {C_TEXT_MID};")
+
+            if param_type == "choice":
+                combo = QComboBox()
+                combo.setFont(QFont(FONT_MONO, 9))
+                combo.setStyleSheet(f"""
+                    QComboBox {{
+                        background: {C_BG_DEEP};
+                        color: {C_TEXT_HI};
+                        border: 1px solid {C_BORDER};
+                        border-radius: 3px;
+                        padding: 2px 6px;
+                    }}
+                    QComboBox::drop-down {{ border: none; }}
+                    QComboBox QAbstractItemView {{
+                        background: {C_BG_SURFACE};
+                        color: {C_TEXT_HI};
+                        selection-background-color: {C_ACCENT_DIM};
+                    }}
+                """)
+                for choice in p_info['choices']:
+                    combo.addItem(choice)
+                combo.setCurrentIndex(p_info.get('default', 0))
+                combo.currentIndexChanged.connect(self._on_change)
+                self.combos[p_name] = combo
+
+                row = QHBoxLayout()
+                row.addWidget(lbl)
+                row.addWidget(combo)
+                layout.addLayout(row)
+
+            else:  # slider
+                val_lbl = QLabel()
+                val_lbl.setFont(QFont(FONT_MONO, 9))
+                val_lbl.setStyleSheet(f"color: {C_ACCENT};")
+                val_lbl.setFixedWidth(35)
+
+                slider = QSlider(Qt.Horizontal)
+                slider.setMinimum(p_info['min'])
+                slider.setMaximum(p_info['max'])
+                slider.setValue(p_info['default'])
+                slider.setStyleSheet(f"""
+                    QSlider::groove:horizontal {{
+                        border: 1px solid {C_BORDER};
+                        height: 4px;
+                        background: {C_BG_DEEP};
+                        margin: 2px 0;
+                    }}
+                    QSlider::handle:horizontal {{
+                        background: {C_ACCENT};
+                        border: 1px solid {C_ACCENT_HOT};
+                        width: 12px;
+                        margin: -4px 0;
+                        border-radius: 6px;
+                    }}
+                """)
+
+                row = QHBoxLayout()
+                row.addWidget(lbl)
+                row.addWidget(slider)
+                row.addWidget(val_lbl)
+                layout.addLayout(row)
+
+                factor = p_info.get('factor', 1.0)
+                self.sliders[p_name] = (slider, val_lbl, factor)
+                val = p_info['default'] / factor
+                val_lbl.setText(f"{val:g}")
+                slider.valueChanged.connect(self._on_change)
+
+    def _on_change(self):
+        # Update text labels immediately so UI feels responsive
+        for p_name, (slider, val_lbl, factor) in self.sliders.items():
+            val = slider.value() / factor
+            val_lbl.setText(f"{val:g}")
+        # Restart debounce timer
+        self._timer.start()
+
+    def _emit_value_changed(self):
+        self.valueChanged.emit(self.get_current_params())
+
+    def get_current_params(self):
+        result = {}
+        for p_name, (slider, val_lbl, factor) in self.sliders.items():
+            val = slider.value() / factor
+            result[p_name] = val
+        for p_name, combo in self.combos.items():
+            result[p_name] = combo.currentIndex()
+        return result
+
+
+# ─────────────────────────────────────────────
+# Custom Kernel Input Panel
+# ─────────────────────────────────────────────
+class CustomKernelPanel(QWidget):
+    applyRequested = pyqtSignal(str, dict)  # (label, params)
+
+    PRESETS = {
+        "Identity":        "0 0 0\n0 1 0\n0 0 0",
+        "Sharpen":         "0 -1 0\n-1 5 -1\n0 -1 0",
+        "Edge (Laplace)":  "-1 -1 -1\n-1 8 -1\n-1 -1 -1",
+        "Box Blur":        "1 1 1\n1 1 1\n1 1 1",
+        "Emboss":          "-2 -1 0\n-1 1 1\n0 1 2",
+    }
+
+    def __init__(self, proc_label: str, parent=None):
+        super().__init__(parent)
+        self._proc_label = proc_label
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 4, 8, 8)
+        layout.setSpacing(4)
+
+        # Preset selector
+        preset_row = QHBoxLayout()
+        preset_lbl = QLabel("Preset:")
+        preset_lbl.setFont(QFont(FONT_MONO, 9))
+        preset_lbl.setStyleSheet(f"color: {C_TEXT_MID};")
+
+        self.preset_combo = QComboBox()
+        self.preset_combo.setFont(QFont(FONT_MONO, 9))
+        self.preset_combo.setStyleSheet(f"""
+            QComboBox {{
+                background: {C_BG_DEEP};
+                color: {C_TEXT_HI};
+                border: 1px solid {C_BORDER};
+                border-radius: 3px;
+                padding: 2px 6px;
+            }}
+            QComboBox::drop-down {{ border: none; }}
+            QComboBox QAbstractItemView {{
+                background: {C_BG_SURFACE};
+                color: {C_TEXT_HI};
+                selection-background-color: {C_ACCENT_DIM};
+            }}
+        """)
+        for name in self.PRESETS:
+            self.preset_combo.addItem(name)
+        self.preset_combo.currentTextChanged.connect(self._on_preset)
+        preset_row.addWidget(preset_lbl)
+        preset_row.addWidget(self.preset_combo)
+        layout.addLayout(preset_row)
+
+        # Text area for kernel values
+        kernel_lbl = QLabel("Kernel (rows, space-separated):")
+        kernel_lbl.setFont(QFont(FONT_MONO, 9))
+        kernel_lbl.setStyleSheet(f"color: {C_TEXT_MID};")
+        layout.addWidget(kernel_lbl)
+
+        self.kernel_edit = QTextEdit()
+        self.kernel_edit.setFont(QFont(FONT_MONO, 10))
+        self.kernel_edit.setFixedHeight(72)
+        self.kernel_edit.setPlaceholderText("e.g.\n-1 -1 -1\n-1  8 -1\n-1 -1 -1")
+        self.kernel_edit.setStyleSheet(f"""
+            QTextEdit {{
+                background: {C_BG_DEEP};
+                color: {C_TEXT_HI};
+                border: 1px solid {C_BORDER};
+                border-radius: 3px;
+                padding: 4px;
+            }}
+        """)
+        self.kernel_edit.setText(self.PRESETS["Identity"])
+        layout.addWidget(self.kernel_edit)
+
+        # Apply button
+        self.btn_apply = QPushButton("▶  Apply Kernel")
+        self.btn_apply.setEnabled(False)
+        self.btn_apply.setFont(QFont(FONT_MONO, 9, QFont.Bold))
+        self.btn_apply.setFixedHeight(26)
+        self.btn_apply.setStyleSheet(f"""
+            QPushButton {{
+                background: {C_ACCENT_DIM};
+                color: #fff;
+                border: none;
+                border-radius: 3px;
+                padding: 0 8px;
+            }}
+            QPushButton:hover {{ background: {C_ACCENT}; }}
+            QPushButton:disabled {{ background: {C_BG_SURFACE}; color: {C_TEXT_DEAD}; }}
+        """)
+        self.btn_apply.clicked.connect(self._emit_apply)
+        layout.addWidget(self.btn_apply)
+
+    def set_enabled(self, enabled: bool):
+        self.btn_apply.setEnabled(enabled)
+
+    def _on_preset(self, name: str):
+        if name in self.PRESETS:
+            self.kernel_edit.setText(self.PRESETS[name])
+
+    def _emit_apply(self):
+        kernel_str = self.kernel_edit.toPlainText()
+        self.applyRequested.emit(self._proc_label, {"kernel": kernel_str})
+
+
 # ─────────────────────────────────────────────
 # Processing Sidebar
 # ─────────────────────────────────────────────
@@ -283,14 +509,16 @@ class ProcessingSidebar(QWidget):
     resetRequested   = pyqtSignal()
     saveRequested    = pyqtSignal()
     processRequested = pyqtSignal(str)
+    processWithParamsRequested = pyqtSignal(str, dict)
     animateRequested = pyqtSignal(str)
     infoRequested    = pyqtSignal(str)
+    applyRequested   = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMinimumWidth(165)
-        self.setMaximumWidth(220)
-        self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        self.setMinimumWidth(250)
+        self.setMaximumWidth(350)
+        self.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.Expanding)
         self.setStyleSheet(f"""
             ProcessingSidebar {{
                 background: {C_BG_BASE};
@@ -326,77 +554,117 @@ class ProcessingSidebar(QWidget):
         hl.addWidget(lbl)
         root.addWidget(header)
 
-        # ── Scrollable content ────────────────
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setStyleSheet(f"background: {C_BG_BASE}; border: none;")
-
-        content = QWidget()
-        content.setStyleSheet(f"background: {C_BG_BASE};")
-        self._cl = QVBoxLayout(content)
-        self._cl.setContentsMargins(8, 8, 8, 8)
-        self._cl.setSpacing(0)
-
-        # Action buttons (Reset & Save)
+        # ── Action buttons ────────────────────
         action_layout = QHBoxLayout()
+        action_layout.setContentsMargins(8, 8, 8, 8)
         action_layout.setSpacing(4)
         
         self.btn_reset = _reset_btn()
         self.btn_reset.setIcon(IC.reset())
         self.btn_reset.setIconSize(ICON_SIZE_MD)
-        self.btn_reset.clicked.connect(self.resetRequested)
+        self.btn_reset.clicked.connect(lambda: self.resetRequested.emit())
+        
+        self.btn_apply = _save_btn()
+        self.btn_apply.setText("Apply")
+        self.btn_apply.setIcon(IC.save())
+        self.btn_apply.setIconSize(ICON_SIZE_MD)
+        self.btn_apply.clicked.connect(lambda: self.applyRequested.emit())
         
         self.btn_save = _save_btn()
         self.btn_save.setIcon(IC.save())
         self.btn_save.setIconSize(ICON_SIZE_MD)
-        self.btn_save.clicked.connect(self.saveRequested)
+        self.btn_save.clicked.connect(lambda: self.saveRequested.emit())
 
-        action_layout.addWidget(self.btn_reset)
+        action_layout.addWidget(self.btn_apply)
         action_layout.addWidget(self.btn_save)
+        action_layout.addWidget(self.btn_reset)
         
-        self._cl.addLayout(action_layout)
-        self._cl.addSpacing(8)
+        root.addLayout(action_layout)
 
-        # ── Collapsible category sections ─────
-        self._build_sections()
-
-        # ── Future placeholder ────────────────
-        self._cl.addStretch()
-        hint = QLabel("More tools\ncoming soon")
-        hint.setAlignment(Qt.AlignCenter)
-        hint.setFont(QFont(FONT_MONO, 8))
-        hint.setStyleSheet(f"""
-            color: {C_TEXT_DEAD};
-            border: 1px dashed {C_BORDER};
-            border-radius: 4px;
-            padding: 12px 8px;
-            margin-top: 8px;
-            background: transparent;
+        # ── Tabs ──────────────────────────────
+        from PyQt5.QtWidgets import QTabWidget
+        self.tabs = QTabWidget()
+        self.tabs.setStyleSheet(f"""
+            QTabWidget::pane {{
+                border: none;
+                border-top: 1px solid {C_BORDER};
+                background: {C_BG_BASE};
+            }}
+            QTabBar::tab {{
+                background: {C_BG_DEEP};
+                color: {C_TEXT_MID};
+                padding: 6px 12px;
+                border: none;
+                font-family: "{FONT_MONO}";
+                font-size: 11px;
+            }}
+            QTabBar::tab:selected {{
+                color: {C_ACCENT};
+                background: {C_BG_BASE};
+                border-bottom: 2px solid {C_ACCENT};
+            }}
+            QTabBar::tab:hover:!selected {{
+                color: {C_TEXT_HI};
+                background: {C_BG_HOVER};
+            }}
         """)
-        self._cl.addWidget(hint)
+        root.addWidget(self.tabs)
 
-        scroll.setWidget(content)
-        root.addWidget(scroll)
+        self._build_sections()
 
     # ──────────────────────────────────────────
     def _build_sections(self):
         """
-        Group processors by category, create one CollapsibleSection per category.
-        First category starts expanded; rest start collapsed.
+        Group processors by category into Tabs, then into CollapsibleSections.
         """
         processors = get_all_processors()
+        self._custom_kernel_panels: list[CustomKernelPanel] = []
 
-        # Collect categories preserving registration order
+        # Collect categories
         categories: dict[str, list] = {}
         for proc in processors:
             categories.setdefault(proc.category, []).append(proc)
 
-        for idx, (cat, procs) in enumerate(categories.items()):
+        # Map categories to tabs
+        TAB_MAPPING = {
+            "Color Analysis": "Basic",
+            "Transform": "Basic",
+            "Enhancement": "Spatial",
+            "Filters": "Spatial",
+            "Morphology": "Spatial",
+            "Segmentation": "Segmentation",
+            "Detection": "Detection",
+            "Sharpening": "Spatial",
+            "Frequency Domain": "Frequency"
+        }
+
+        # Initialize tabs
+        tab_layouts = {}
+        for tab_name in ["Basic", "Spatial", "Segmentation", "Detection", "Frequency"]:
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QFrame.NoFrame)
+            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            scroll.setStyleSheet(f"background: {C_BG_BASE}; border: none;")
+
+            content = QWidget()
+            content.setStyleSheet(f"background: {C_BG_BASE};")
+            cl = QVBoxLayout(content)
+            cl.setContentsMargins(8, 8, 8, 8)
+            cl.setSpacing(0)
+            
+            scroll.setWidget(content)
+            self.tabs.addTab(scroll, tab_name)
+            tab_layouts[tab_name] = cl
+
+        # Build sections inside tabs
+        for cat, procs in categories.items():
+            tab_name = TAB_MAPPING.get(cat, "Basic")
+            cl = tab_layouts[tab_name]
+
             section = CollapsibleSection(
                 title=cat,
-                start_expanded=(idx == 0),
+                start_expanded=True,
                 icon_func=CATEGORY_ICONS.get(cat),
             )
 
@@ -407,15 +675,10 @@ class ProcessingSidebar(QWidget):
                 w_layout.setSpacing(2)
 
                 btn = _proc_btn(proc.label, proc.tooltip)
-                # Add icon if we have one for this processor
                 if proc.label in PROC_ICONS:
                     btn.setIcon(PROC_ICONS[proc.label]())
                     btn.setIconSize(ICON_SIZE_MD)
-                if proc.animated:
-                    btn.clicked.connect(self._make_animate_handler(proc.label))
-                else:
-                    btn.clicked.connect(self._make_process_handler(proc.label))
-                
+
                 info_btn = QPushButton()
                 info_btn.setIcon(IC.info())
                 info_btn.setFixedSize(24, 32)
@@ -436,14 +699,71 @@ class ProcessingSidebar(QWidget):
 
                 w_layout.addWidget(btn, stretch=1)
                 w_layout.addWidget(info_btn)
-                section.add_widget(w_container, [btn, info_btn])
+
+                # custom_ui processors
+                if getattr(proc, 'custom_ui', False):
+                    kernel_panel = CustomKernelPanel(proc.label)
+                    kernel_panel.applyRequested.connect(
+                        lambda lbl, params: self.processWithParamsRequested.emit(lbl, params)
+                    )
+                    self._custom_kernel_panels.append(kernel_panel)
+                    btn.clicked.connect(self._make_process_with_kernel_handler(kernel_panel))
+
+                    wrapper = QWidget()
+                    wl = QVBoxLayout(wrapper)
+                    wl.setContentsMargins(0, 0, 0, 0)
+                    wl.setSpacing(0)
+                    wl.addWidget(w_container)
+                    wl.addWidget(kernel_panel)
+                    section.add_widget(wrapper, [btn, info_btn])
+
+                # processors with params
+                elif hasattr(proc, 'params') and proc.params:
+                    param_panel = ParamControlPanel(proc.params)
+                    param_panel.valueChanged.connect(self._make_process_with_params_handler(proc.label))
+
+                    if proc.animated:
+                        btn.clicked.connect(self._make_animate_handler(proc.label))
+                    else:
+                        btn.clicked.connect(self._make_process_with_sliders_handler(proc.label, param_panel))
+
+                    wrapper = QWidget()
+                    wl = QVBoxLayout(wrapper)
+                    wl.setContentsMargins(0, 0, 0, 0)
+                    wl.setSpacing(0)
+                    wl.addWidget(w_container)
+                    wl.addWidget(param_panel)
+                    section.add_widget(wrapper, [btn, info_btn])
+
+                else:
+                    if proc.animated:
+                        btn.clicked.connect(self._make_animate_handler(proc.label))
+                    else:
+                        btn.clicked.connect(self._make_process_handler(proc.label))
+                    section.add_widget(w_container, [btn, info_btn])
 
             self._sections.append(section)
-            self._cl.addWidget(section)
-            self._cl.addSpacing(2)
+            cl.addWidget(section)
+            cl.addSpacing(2)
+
+        # Add stretches to the bottom of all tabs
+        for cl in tab_layouts.values():
+            cl.addStretch()
 
     def _make_process_handler(self, label: str):
         def h(): self.processRequested.emit(label)
+        return h
+
+    def _make_process_with_sliders_handler(self, label: str, panel: ParamControlPanel):
+        def h(): self.processWithParamsRequested.emit(label, panel.get_current_params())
+        return h
+
+    def _make_process_with_kernel_handler(self, panel: 'CustomKernelPanel'):
+        def h(): panel._emit_apply()
+        return h
+        
+    def _make_process_with_params_handler(self, label: str):
+        def h(params: dict): self.processWithParamsRequested.emit(label, params)
         return h
 
     def _make_animate_handler(self, label: str):
@@ -460,6 +780,9 @@ class ProcessingSidebar(QWidget):
     def set_enabled(self, enabled: bool):
         """Enable/disable all buttons when an image loads or is cleared."""
         self.btn_reset.setEnabled(enabled)
+        self.btn_apply.setEnabled(enabled)
         self.btn_save.setEnabled(enabled)
         for section in self._sections:
             section.set_buttons_enabled(enabled)
+        for panel in self._custom_kernel_panels:
+            panel.set_enabled(enabled)

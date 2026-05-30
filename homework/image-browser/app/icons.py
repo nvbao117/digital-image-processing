@@ -64,6 +64,11 @@ class _Icons:
     def cat_color(self):   return _icon("fa5s.palette",        C_TEXT_LOW)
     def cat_transform(self): return _icon("fa5s.crop-alt",     C_TEXT_LOW)
     def cat_enhance(self): return _icon("fa5s.magic",          C_TEXT_LOW)
+    def cat_sharpen(self): return _icon("fa5s.bolt",           C_TEXT_LOW)
+    def cat_filter(self):  return _icon("fa5s.filter",         C_TEXT_LOW)
+    def cat_morphology(self): return _icon("fa5s.shapes",      C_TEXT_LOW)
+    def cat_segmentation(self): return _icon("fa5s.project-diagram", C_TEXT_LOW)
+    def cat_detection(self): return _icon("fa5s.search",       C_TEXT_LOW)
 
     # ── Tree / file system ───────────────────
     def folder(self):      return _icon("fa5s.folder",         C_ACCENT_DIM)
@@ -74,6 +79,29 @@ class _Icons:
     def info(self):        return _icon("fa5s.info-circle",    C_TEXT_LOW)
     def chevron_down(self): return _icon("fa5s.chevron-down",  C_TEXT_LOW)
     def chevron_right(self): return _icon("fa5s.chevron-right",C_TEXT_LOW)
+
+    # ── New Processors ───────────────────────
+    def sharpen(self):     return _icon("fa5s.adjust",         C_TEXT_MID)
+    def dilation(self):    return _icon("fa5s.expand-arrows-alt", C_TEXT_MID)
+    def erosion(self):     return _icon("fa5s.compress-arrows-alt", C_TEXT_MID)
+    def opening(self):     return _icon("fa5s.unlock",         C_TEXT_MID)
+    def closing(self):     return _icon("fa5s.lock",           C_TEXT_MID)
+    def boundary(self):    return _icon("fa5s.draw-polygon",   C_TEXT_MID)
+    def region_fill(self): return _icon("fa5s.fill-drip",      C_TEXT_MID)
+    def component(self):   return _icon("fa5s.project-diagram", C_TEXT_MID)
+    def convex_hull(self): return _icon("fa5s.vector-square",  C_TEXT_MID)
+    def thinning(self):    return _icon("fa5s.minus",          C_TEXT_MID)
+    def thickening(self):  return _icon("fa5s.plus",           C_TEXT_MID)
+    def skeleton(self):    return _icon("fa5s.stream",         C_TEXT_MID)
+    def hit_or_miss(self): return _icon("fa5s.bullseye",       C_TEXT_MID)
+    def threshold(self):   return _icon("fa5s.sliders-h",      C_TEXT_MID)
+    def otsu(self):        return _icon("fa5s.adjust",         C_TEXT_MID)
+    def adaptive_threshold(self): return _icon("fa5s.th-large", C_TEXT_MID)
+    def kmeans(self):      return _icon("fa5s.layer-group",    C_TEXT_MID)
+    def watershed(self):   return _icon("fa5s.water",          C_TEXT_MID)
+    def point_detection(self): return _icon("fa5s.crosshairs", C_TEXT_MID)
+    def line_detection(self): return _icon("fa5s.grip-lines",  C_TEXT_MID)
+    def edge_detection(self): return _icon("fa5s.bolt",        C_TEXT_MID)
 
 
 # Singleton — import and use as:  IC.folder_open()
@@ -91,12 +119,39 @@ PROC_ICONS: dict[str, callable] = {
     "Flip":       lambda: IC.flip(),
     "Equalize":   lambda: IC.equalize(),
     "Rotate":     lambda: IC.rotate(),
+    "Laplace Sharpen": lambda: IC.sharpen(),
+    "Gradient Sharpen": lambda: IC.sharpen(),
+    "Dilation": lambda: IC.dilation(),
+    "Erosion": lambda: IC.erosion(),
+    "Opening": lambda: IC.opening(),
+    "Closing": lambda: IC.closing(),
+    "Boundary Extraction": lambda: IC.boundary(),
+    "Region Filling": lambda: IC.region_fill(),
+    "Connected Component": lambda: IC.component(),
+    "Convex Hull": lambda: IC.convex_hull(),
+    "Thinning": lambda: IC.thinning(),
+    "Thickening": lambda: IC.thickening(),
+    "Skeleton": lambda: IC.skeleton(),
+    "Hit-or-Miss": lambda: IC.hit_or_miss(),
+    "Binary Threshold": lambda: IC.threshold(),
+    "Otsu Threshold": lambda: IC.otsu(),
+    "Adaptive Threshold": lambda: IC.adaptive_threshold(),
+    "K-Means Segmentation": lambda: IC.kmeans(),
+    "Watershed": lambda: IC.watershed(),
+    "Point Detection": lambda: IC.point_detection(),
+    "Line Detection": lambda: IC.line_detection(),
+    "Edge Detection": lambda: IC.edge_detection(),
 }
 
 CATEGORY_ICONS: dict[str, callable] = {
     "Color Analysis": lambda: IC.cat_color(),
     "Transform":      lambda: IC.cat_transform(),
     "Enhancement":    lambda: IC.cat_enhance(),
+    "Sharpening":     lambda: IC.cat_sharpen(),
+    "Filters":        lambda: IC.cat_filter(),
+    "Morphology":     lambda: IC.cat_morphology(),
+    "Segmentation":   lambda: IC.cat_segmentation(),
+    "Detection":      lambda: IC.cat_detection(),
 }
 
 ICON_SIZE_SM  = QSize(13, 13)   # panel header labels

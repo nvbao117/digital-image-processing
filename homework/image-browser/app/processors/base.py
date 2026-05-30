@@ -82,8 +82,12 @@ class ImageProcessor:
     category: ClassVar[str] = "General"
     tooltip:  ClassVar[str] = ""
     animated: ClassVar[bool] = False  # True → UI calls on_animate() instead of apply()
+    
+    # Dictionary of hyperparameters. Example:
+    # {"gamma": {"label": "Gamma", "min": 1, "max": 50, "default": 10, "factor": 10.0}}
+    params: ClassVar[Dict[str, Dict]] = {}
 
-    def apply(self, img: np.ndarray) -> np.ndarray:
+    def apply(self, img: np.ndarray, **kwargs) -> np.ndarray:
         """
         Process the image and return a new numpy array (BGR or grayscale).
 
